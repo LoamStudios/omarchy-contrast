@@ -5,4 +5,4 @@ payload="{}"
 if [[ -n $1 || -n $2 ]]; then
   payload=$(printf '{"fg":"%s","bg":"%s"}' "${1:-}" "${2:-}")
 fi
-exec omarchy-shell shell toggle omarchy-contrast "$payload"
+exec omarchy-shell shell toggle loamstudios.contrast "$payload"

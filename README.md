@@ -23,13 +23,13 @@ omarchy plugin add https://github.com/LoamStudios/omarchy-contrast.git --enable
 Then open it with:
 
 ```sh
-omarchy-shell shell toggle omarchy-contrast
+omarchy-shell shell toggle loamstudios.contrast
 ```
 
 Optionally preload a pair:
 
 ```sh
-omarchy-shell shell toggle omarchy-contrast '{"fg":"#658baf","bg":"#111111"}'
+omarchy-shell shell toggle loamstudios.contrast '{"fg":"#658baf","bg":"#111111"}'
 ```
 
 ### Launcher, menu entry and keybinding

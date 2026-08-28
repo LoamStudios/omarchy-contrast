@@ -10,7 +10,7 @@ import "Contrast.js" as Contrast
 // Contrast checker overlay, in the spirit of MDS's "Contrast" macOS app:
 // pick a foreground and background, get WCAG 2 + APCA verdicts instantly.
 //
-//   omarchy-shell shell toggle omarchy-contrast
+//   omarchy-shell shell toggle loamstudios.contrast
 //
 // Keyboard: Esc closes, Tab moves between hex fields, Ctrl+F / Ctrl+B run
 // the eyedropper for foreground / background, Shift+X swaps.
@@ -66,7 +66,7 @@ Item {
   function dismiss() {
     root.opened = false
     if (root.shell && typeof root.shell.hide === "function")
-      root.shell.hide((root.manifest && root.manifest.id) || "omarchy-contrast")
+      root.shell.hide((root.manifest && root.manifest.id) || "loamstudios.contrast")
   }
 
   function toggle() {
