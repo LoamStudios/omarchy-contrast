@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy-contrast",
+  "name": "Contrast",
+  "version": "0.1.0",
+  "author": "Loam Studios",
+  "description": "Colour contrast checker with WCAG 2 conformance, eyedropper and an RGB / HSL / OKLCH / greyscale picker",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Contrast.qml"
+  }
+}
