@@ -5,6 +5,8 @@ A colour contrast checker for [Omarchy](https://omarchy.org), in the spirit of
 Omarchy shell: pick a foreground and a background, get the WCAG 2 contrast
 ratio and conformance level instantly.
 
+![omarchy-contrast overlay with the picker drawer open](preview.png)
+
 - Live preview of the pair with the contrast ratio and conformance level
   (**AAA** ≥ 7, **AA** ≥ 4.5, **AA Large** ≥ 3, otherwise **Fail**)
 - Eyedropper for either colour (via `hyprpicker`)
