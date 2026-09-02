@@ -5,8 +5,18 @@
 
 // ---------- parsing ----------
 
+// Caps applied before any JSON.parse or subprocess buffer is retained.
+var MAX_IPC_BYTES = 512
+var MAX_PICK_BYTES = 32
+var MAX_PICK_ERR_BYTES = 256
+var MAX_TOOL_BYTES = 64
+var PICK_DEADLINE_SECS = 90
+var TOOL_DEADLINE_SECS = 2
+
 function parseHex(s) {
-  var t = String(s || "").trim().replace(/^#/, "")
+  if (typeof s !== "string") return null
+  if (s.length > 16) return null
+  var t = s.trim().replace(/^#/, "")
   if (/^[0-9a-fA-F]{3}$/.test(t)) t = t[0] + t[0] + t[1] + t[1] + t[2] + t[2]
   if (!/^[0-9a-fA-F]{6}$/.test(t)) return null
   return {
@@ -14,6 +24,45 @@ function parseHex(s) {
     g: parseInt(t.substr(2, 2), 16),
     b: parseInt(t.substr(4, 2), 16)
   }
+}
+
+// Overlay IPC: only {fg?, bg?} hex strings, after a hard size cap.
+function parseOpenPayload(raw) {
+  if (raw == null || raw === "") return { ok: true, fg: null, bg: null }
+  if (typeof raw !== "string") return { ok: false, fg: null, bg: null }
+  if (raw.length > MAX_IPC_BYTES) return { ok: false, fg: null, bg: null }
+  var trimmed = raw.replace(/^\s+|\s+$/g, "")
+  if (trimmed === "" || trimmed === "{}") return { ok: true, fg: null, bg: null }
+  var p
+  try { p = JSON.parse(trimmed) } catch (e) { return { ok: false, fg: null, bg: null } }
+  if (!p || typeof p !== "object" || (typeof Array !== "undefined" && Array.isArray(p)))
+    return { ok: false, fg: null, bg: null }
+  var out = { ok: true, fg: null, bg: null }
+  for (var k in p) {
+    if (!Object.prototype.hasOwnProperty.call(p, k)) continue
+    if (k !== "fg" && k !== "bg") return { ok: false, fg: null, bg: null }
+  }
+  if (Object.prototype.hasOwnProperty.call(p, "fg")) {
+    var fg = parseHex(p.fg)
+    if (!fg) return { ok: false, fg: null, bg: null }
+    out.fg = toHex(fg)
+  }
+  if (Object.prototype.hasOwnProperty.call(p, "bg")) {
+    var bg = parseHex(p.bg)
+    if (!bg) return { ok: false, fg: null, bg: null }
+    out.bg = toHex(bg)
+  }
+  return out
+}
+
+// hyprpicker stdout must be a single hex colour, nothing else.
+function parsePickedColor(text) {
+  if (typeof text !== "string") return null
+  if (text.length > MAX_PICK_BYTES) return null
+  var t = text.replace(/^\s+|\s+$/g, "")
+  if (!t || t.length > 16) return null
+  var c = parseHex(t)
+  return c ? toHex(c) : null
 }
 
 function toHex(c) {

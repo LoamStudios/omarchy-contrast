@@ -78,7 +78,8 @@ Click a swatch to open the picker drawer for that colour.
 
 - `manifest.json` — Omarchy shell plugin manifest (`kinds: ["overlay"]`)
 - `Contrast.qml` — the overlay
-- `Contrast.js` — colour maths: WCAG 2, APCA, OKLab/OKLCH, HSV/HSL
+- `Contrast.js` — colour maths: WCAG 2, APCA, OKLab/OKLCH, HSV/HSL, IPC schema
+- `scripts/run-capped.sh` — allowlisted `/usr/bin` launcher with byte caps
 - `bin/omarchy-contrast` — launcher wrapper
 
 ## Requirements

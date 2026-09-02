@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "loamstudios.contrast",
   "name": "Contrast",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Loam Studios",
   "description": "Colour contrast checker with WCAG 2 conformance, eyedropper and an RGB / HSL / OKLCH / greyscale picker",
   "license": "MIT",

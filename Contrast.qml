@@ -49,22 +49,60 @@ Item {
 
   // ---------- shell contract ----------
 
+  readonly property string helperPath: {
+    var u = String(Qt.resolvedUrl("scripts/run-capped.sh"))
+    return u.indexOf("file://") === 0 ? u.slice(7) : u
+  }
+
+  function trustedCommand(deadlineSecs, maxOut, maxErr, tool, args) {
+    var cmd = [
+      "/usr/bin/timeout", "--kill-after=2s", String(deadlineSecs) + "s",
+      "/usr/bin/bash", root.helperPath,
+      String(maxOut), String(maxErr), tool
+    ]
+    for (var i = 0; i < args.length; i++) cmd.push(args[i])
+    return cmd
+  }
+
+  function stopProc(proc, killTimer) {
+    if (killTimer) killTimer.stop()
+    if (!proc.running) return
+    proc.running = false
+    if (killTimer) killTimer.restart()
+  }
+
+  function forceKill(proc) {
+    if (proc.running) proc.signal(9)
+  }
+
+  function stopAllTools() {
+    pickSettle.stop()
+    pickWatchdog.stop()
+    copyWatchdog.stop()
+    notifyWatchdog.stop()
+    root.stopProc(pickProc, pickKillGrace)
+    root.stopProc(copyProc, copyKillGrace)
+    root.stopProc(notifyProc, notifyKillGrace)
+  }
+
   function open(payloadJson) {
-    try {
-      var p = JSON.parse(payloadJson || "{}")
-      if (p.fg && Contrast.parseHex(p.fg)) setFg(Contrast.toHex(Contrast.parseHex(p.fg)))
-      if (p.bg && Contrast.parseHex(p.bg)) setBg(Contrast.toHex(Contrast.parseHex(p.bg)))
-    } catch (e) {}
+    var parsed = Contrast.parseOpenPayload(payloadJson)
+    if (parsed.ok) {
+      if (parsed.fg) setFg(parsed.fg)
+      if (parsed.bg) setBg(parsed.bg)
+    }
     root.opened = true
     Qt.callLater(function() { fgField.forceActiveFocus(); fgField.selectAll() })
   }
 
   function close() {
+    root.picking = false
+    root.stopAllTools()
     root.opened = false
   }
 
   function dismiss() {
-    root.opened = false
+    root.close()
     if (root.shell && typeof root.shell.hide === "function")
       root.shell.hide((root.manifest && root.manifest.id) || "loamstudios.contrast")
   }
@@ -133,8 +171,23 @@ Item {
   }
 
   function copyHex(hex) {
-    Quickshell.execDetached(["wl-copy", "--", hex])
-    Quickshell.execDetached(["notify-send", "-a", "Contrast", "-t", "1500", "Copied " + hex])
+    var c = Contrast.parseHex(hex)
+    if (!c) return
+    var h = Contrast.toHex(c)
+    root.stopProc(copyProc, copyKillGrace)
+    copyProc.command = root.trustedCommand(
+      Contrast.TOOL_DEADLINE_SECS, Contrast.MAX_TOOL_BYTES, Contrast.MAX_TOOL_BYTES,
+      "wl-copy", ["--", h]
+    )
+    copyWatchdog.restart()
+    copyProc.running = true
+    root.stopProc(notifyProc, notifyKillGrace)
+    notifyProc.command = root.trustedCommand(
+      Contrast.TOOL_DEADLINE_SECS, Contrast.MAX_TOOL_BYTES, Contrast.MAX_TOOL_BYTES,
+      "notify-send", ["-a", "Contrast", "-t", "1500", "Copied " + h]
+    )
+    notifyWatchdog.restart()
+    notifyProc.running = true
   }
 
   // ---------- inline picker ----------
@@ -318,64 +371,141 @@ Item {
   // ---------- eyedropper ----------
 
   function pick(target) {
-    if (root.picking) return
+    if (root.picking || pickProc.running) return
     root.pickTarget = target
+    root.pickCaptured = ""
     // The card stays put; only the scrim and the keyboard grab are released so
     // hyprpicker can freeze the desktop and take input.
     root.picking = true
+    pickProc.command = root.trustedCommand(
+      Contrast.PICK_DEADLINE_SECS, Contrast.MAX_PICK_BYTES, Contrast.MAX_PICK_ERR_BYTES,
+      "hyprpicker", ["--format=hex", "--lowercase-hex", "--no-fancy"]
+    )
+    pickWatchdog.restart()
     pickProc.running = true
   }
 
-  property string pickOut: ""
-  property string pickErr: ""
-
-  function applyPicked(text) {
-    var m = String(text || "").match(/#?([0-9a-fA-F]{6})\b/)
-    if (!m) return false
-    var h = "#" + m[1].toLowerCase()
-    if (root.pickTarget === "fg") { fgField.text = h; setFg(h) }
-    else { bgField.text = h; setBg(h) }
-    return true
-  }
+  property string pickCaptured: ""
 
   function reopenAfterPick() {
+    pickWatchdog.stop()
+    pickKillGrace.stop()
     root.picking = false
-    Qt.callLater(function() { (root.pickTarget === "fg" ? fgField : bgField).forceActiveFocus() })
+    Qt.callLater(function() {
+      if (!root.opened) return
+      (root.pickTarget === "fg" ? fgField : bgField).forceActiveFocus()
+    })
   }
 
-  function pickFinished() {
-    var all = root.pickOut + "\n" + root.pickErr
-    console.log("omarchy-contrast: hyprpicker output:", JSON.stringify(all.trim()))
-    if (applyPicked(all)) { reopenAfterPick(); return }
-    // Nothing on stdio (or cancelled): hyprpicker also --autocopy'd, so try
-    // the clipboard before giving up.
-    clipProc.running = true
+  function abortPick() {
+    pickWatchdog.stop()
+    pickSettle.stop()
+    root.stopProc(pickProc, pickKillGrace)
+    if (root.picking) root.reopenAfterPick()
   }
 
-  Process {
-    id: clipProc
-    command: ["wl-paste", "-n"]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        console.log("omarchy-contrast: clipboard:", JSON.stringify(String(text).trim()))
-        root.applyPicked(text)
-        root.reopenAfterPick()
-      }
+  function applyCapturedPick() {
+    if (!root.picking) return
+    var h = Contrast.parsePickedColor(root.pickCaptured)
+    if (h) {
+      if (root.pickTarget === "fg") { fgField.text = h; setFg(h) }
+      else { bgField.text = h; setBg(h) }
     }
-    onExited: function(code) { if (code !== 0) root.reopenAfterPick() }
+    root.reopenAfterPick()
   }
 
   Process {
     id: pickProc
-    command: ["hyprpicker", "--format=hex", "--lowercase-hex", "--no-fancy", "--autocopy"]
-    onStarted: { root.pickOut = ""; root.pickErr = "" }
-    stdout: StdioCollector { onStreamFinished: root.pickOut = text }
-    stderr: StdioCollector { onStreamFinished: root.pickErr = text }
-    onExited: pickSettle.restart()
+    stdout: StdioCollector {
+      waitForEnd: false
+      onDataChanged: {
+        if (text.length > Contrast.MAX_PICK_BYTES) root.abortPick()
+      }
+      onStreamFinished: root.pickCaptured = text
+    }
+    stderr: StdioCollector {
+      waitForEnd: false
+      onDataChanged: {
+        if (text.length > Contrast.MAX_PICK_ERR_BYTES) root.abortPick()
+      }
+    }
+    onExited: {
+      pickWatchdog.stop()
+      pickKillGrace.stop()
+      if (!root.picking) return
+      pickSettle.restart()
+    }
   }
 
-  // Let both stdio collectors flush before reading them.
-  Timer { id: pickSettle; interval: 150; onTriggered: root.pickFinished() }
+  Timer {
+    id: pickSettle
+    interval: 50
+    repeat: false
+    onTriggered: root.applyCapturedPick()
+  }
+
+  Timer {
+    id: pickWatchdog
+    interval: (Contrast.PICK_DEADLINE_SECS + 3) * 1000
+    repeat: false
+    onTriggered: root.abortPick()
+  }
+  Timer {
+    id: pickKillGrace
+    interval: 2000
+    repeat: false
+    onTriggered: root.forceKill(pickProc)
+  }
+
+  Process {
+    id: copyProc
+    stdout: StdioCollector {
+      waitForEnd: false
+      onDataChanged: { if (text.length > Contrast.MAX_TOOL_BYTES) root.stopProc(copyProc, copyKillGrace) }
+    }
+    stderr: StdioCollector {
+      waitForEnd: false
+      onDataChanged: { if (text.length > Contrast.MAX_TOOL_BYTES) root.stopProc(copyProc, copyKillGrace) }
+    }
+    onExited: { copyWatchdog.stop(); copyKillGrace.stop() }
+  }
+  Timer {
+    id: copyWatchdog
+    interval: (Contrast.TOOL_DEADLINE_SECS + 3) * 1000
+    repeat: false
+    onTriggered: root.stopProc(copyProc, copyKillGrace)
+  }
+  Timer {
+    id: copyKillGrace
+    interval: 2000
+    repeat: false
+    onTriggered: root.forceKill(copyProc)
+  }
+
+  Process {
+    id: notifyProc
+    stdout: StdioCollector {
+      waitForEnd: false
+      onDataChanged: { if (text.length > Contrast.MAX_TOOL_BYTES) root.stopProc(notifyProc, notifyKillGrace) }
+    }
+    stderr: StdioCollector {
+      waitForEnd: false
+      onDataChanged: { if (text.length > Contrast.MAX_TOOL_BYTES) root.stopProc(notifyProc, notifyKillGrace) }
+    }
+    onExited: { notifyWatchdog.stop(); notifyKillGrace.stop() }
+  }
+  Timer {
+    id: notifyWatchdog
+    interval: (Contrast.TOOL_DEADLINE_SECS + 3) * 1000
+    repeat: false
+    onTriggered: root.stopProc(notifyProc, notifyKillGrace)
+  }
+  Timer {
+    id: notifyKillGrace
+    interval: 2000
+    repeat: false
+    onTriggered: root.forceKill(notifyProc)
+  }
 
   // ---------- UI ----------
 
@@ -830,4 +960,6 @@ Item {
     fgField.text = root.fgHex
     bgField.text = root.bgHex
   }
+
+  Component.onDestruction: root.stopAllTools()
 }
