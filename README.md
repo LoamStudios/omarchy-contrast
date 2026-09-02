@@ -52,6 +52,16 @@ And bind a key in `~/.config/hypr/bindings.lua`:
 o.bind("SUPER + CTRL + U", "Contrast checker", "omarchy-contrast")
 ```
 
+## Remove
+
+```sh
+omarchy plugin remove loamstudios.contrast
+```
+
+To keep the plugin installed but switch it off, use `omarchy plugin disable
+loamstudios.contrast`. If you copied `bin/omarchy-contrast` onto your `PATH`,
+delete it, and remove the menu entry and keybinding you added above.
+
 ## Keys
 
 | Key | Action |

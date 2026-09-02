@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "author": "Loam Studios",
   "description": "Colour contrast checker with WCAG 2 conformance, eyedropper and an RGB / HSL / OKLCH / greyscale picker",
+  "license": "MIT",
   "kinds": [
     "overlay"
   ],
